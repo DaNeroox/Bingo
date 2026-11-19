@@ -1,0 +1,59 @@
+name: APK bauen
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Code holen
+        uses: actions/checkout@v4
+
+      - name: Projektordner suchen
+        id: find
+        run: |
+          DIR=$(dirname "$(find . -name settings.gradle -not -path '*/node_modules/*' | head -n 1)")
+          if [ -z "$DIR" ] || [ "$DIR" = "." ] && [ ! -f settings.gradle ]; then
+            echo "::error::settings.gradle nicht gefunden – wurden alle Dateien hochgeladen?"
+            ls -R | head -50
+            exit 1
+          fi
+          echo "Projektordner: $DIR"
+          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Java 17 einrichten
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Gradle einrichten
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: APK bauen
+        working-directory: ${{ steps.find.outputs.dir }}
+        run: |
+          gradle assembleDebug --no-daemon --stacktrace
+          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/Bingo.apk"
+
+      - name: APK als Artefakt speichern
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bingo-APK
+          path: Bingo.apk
+
+      - name: APK unter "Releases" veröffentlichen
+        continue-on-error: true
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Bingo Build ${{ github.run_number }}
+          body: APK zum Installieren auf dem Handy – einfach Bingo.apk herunterladen.
+          files: Bingo.apk
